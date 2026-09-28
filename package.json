@@ -1,0 +1,20 @@
+{
+  "name": "squire-telemetry",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260928.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2",
+    "wrangler": "^4.142.0"
+  }
+}

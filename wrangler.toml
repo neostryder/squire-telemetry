@@ -1,0 +1,32 @@
+name = "squire-telemetry"
+main = "src/index.ts"
+compatibility_date = "2026-09-27"
+workers_dev = false
+routes = [{ pattern = "squire.rpgm.tools", custom_domain = true }]
+
+# Request logging stays off: the Worker never records addresses, and Workers logs would.
+[observability]
+enabled = false
+
+[vars]
+RETENTION_DAYS = "180"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "squire-telemetry"
+database_id = "743728a9-b9f0-4173-949b-3374dfe65af1"
+
+# 30 batches a minute per address and 10 per install. Cloudflare's rate limiting keeps the counters, not the addresses.
+[[ratelimits]]
+name = "IP_LIMIT"
+namespace_id = "2001"
+simple = { limit = 30, period = 60 }
+
+[[ratelimits]]
+name = "INSTALL_LIMIT"
+namespace_id = "2002"
+simple = { limit = 10, period = 60 }
+
+# The retention sweep, once a day.
+[triggers]
+crons = ["17 9 * * *"]
