@@ -26,10 +26,28 @@ CREATE TABLE IF NOT EXISTS blobs (
 CREATE INDEX IF NOT EXISTS blobs_install ON blobs (install_id);
 CREATE INDEX IF NOT EXISTS blobs_received ON blobs (received_at);
 
--- Finished runs already posted to Discord, so a run is posted once.
-CREATE TABLE IF NOT EXISTS posted (
+-- One row per finished run: what was sent to Jev, its scores, what happened to the Discord post, and any admin review.
+-- The UNIQUE key also makes sure a run is posted once.
+CREATE TABLE IF NOT EXISTS screens (
+  id TEXT PRIMARY KEY,
   install_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
-  posted_at INTEGER NOT NULL,
-  PRIMARY KEY (install_id, run_id)
+  created_at INTEGER NOT NULL,
+  mod_version TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  state TEXT NOT NULL,
+  answers TEXT,
+  checked INTEGER NOT NULL,
+  name_category TEXT,
+  rest_category TEXT,
+  status TEXT NOT NULL,
+  review TEXT,
+  decision TEXT,
+  reviewer TEXT,
+  reviewed_at INTEGER,
+  public_message TEXT,
+  admin_message TEXT,
+  UNIQUE (install_id, run_id)
 );
+CREATE INDEX IF NOT EXISTS screens_created ON screens (created_at);
+CREATE INDEX IF NOT EXISTS screens_reviewed ON screens (reviewed_at);

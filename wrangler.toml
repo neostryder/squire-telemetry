@@ -10,6 +10,9 @@ enabled = false
 
 [vars]
 RETENTION_DAYS = "180"
+# The Cloudflare Access app "Squire review" covers /admin*; the Worker checks its token against this audience tag too.
+ACCESS_TEAM = "rpgm.cloudflareaccess.com"
+ACCESS_AUD = "d44087a8374b185a05e7cf4d8a73ad89f9e57e32fc63a31dcc69e316d4124c68"
 
 [[d1_databases]]
 binding = "DB"

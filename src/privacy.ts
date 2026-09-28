@@ -38,10 +38,12 @@ export function privacyPage(days: number): string {
 <p>Each batch is stored with a random install id that the mod creates on your device, the run id, and the mod and game versions. Your IP address is used only to limit how often one address can send, and it is never stored. Everything is deleted ${days} days after it arrives. Cloudflare, which hosts this service, may keep short-lived request logs of its own.</p>
 
 <h2>How it is used</h2>
-<p>The records are used to improve the questions Squire asks its model and to train adapters for local models. When a run ends, the character's name, race and class, deepest level, cause of death, most-killed monsters and token count may be posted to the Neo Angband Discord server. Before that post goes out, the name, race, class, cause of death and monster names are sent to TypeSafe's Jev model to check for offensive text. A flagged name is shown as An unnamed adventurer, and a flagged post is not sent at all. The backstory is never posted or checked.</p>
+<p>The records are used to improve the questions Squire asks its model and to train adapters for local models. When a run ends, the character's name, race and class, deepest level, cause of death, most-killed monsters and token count may be posted to the RPGM Tools Discord server.</p>
+<p>Before that, the name, race, class, cause of death and monster names go to TypeSafe's Jev model to check for offensive text. If the name is flagged, the post says An unnamed adventurer instead. If anything else is flagged, the run is not posted. A flagged run also goes to the server's admins in a private channel. They can post it, add the name back or keep it off Discord, and the mod can show you the reason and what they chose.</p>
+<p>The checked text and its scores are kept with the run for the same ${days} days and used to train a copy of the check that runs on RPGM Tools' own computers. The backstory is never posted or checked.</p>
 
 <h2>Seeing and deleting your data</h2>
-<p>To see what is stored for your install, or to remove all of it, use the delete option in Squire's settings. Without the mod, you can use your install id directly: a GET request to <code>https://squire.rpgm.tools/v1/installs/</code> followed by the id lists what is stored, and a DELETE request to the same address removes it at once.</p>
+<p>To see what is stored for your install, or to remove all of it, use the delete option in Squire's settings. Without the mod, you can use your install id directly: a GET request to <code>https://squire.rpgm.tools/v1/installs/</code> followed by the id lists what is stored, and a DELETE request to the same address removes it at once, along with your runs' posts in the Discord server.</p>
 
 <h2>Source code</h2>
 <p>The code that runs this service is public at <a href="https://github.com/neostryder/squire-telemetry">github.com/neostryder/squire-telemetry</a>, so you can check that it does what this page says.</p>

@@ -1,7 +1,9 @@
+import { accessIdentity } from './access';
+import { reviewPage } from './admin';
+import { applyDecision, chronicleOf, decide, forgetPosts, publish, rowFor, type Decision, type Row } from './chronicle';
 import { check, MAX_BYTES, type Batch } from './contract';
-import { runPost } from './discord';
 import { privacyPage } from './privacy';
-import { screen } from './screen';
+import { QUESTIONS, UNFIT_AT } from './screen';
 
 interface Env {
   DB: D1Database;
@@ -12,12 +14,18 @@ interface Env {
   CHRONICLE_WEBHOOK?: string;
   /** TypeSafe key for the Jev screen each chronicle post passes first. */
   TYPESAFE_API_KEY?: string;
+  /** Discord webhook in the admins channel, for runs the screen flagged. */
+  ADMIN_WEBHOOK?: string;
+  /** The Cloudflare Access team domain and the audience tag of the app that covers /admin. */
+  ACCESS_TEAM?: string;
+  ACCESS_AUD?: string;
   RETENTION_DAYS?: string;
 }
 
 const LARGEST = Math.max(...Object.values(MAX_BYTES));
-const POSTS_PER_INSTALL_PER_DAY = 10;
 const INSTALL = /^\/v1\/installs\/([0-9a-f-]{36})$/;
+const REVIEW = /^\/admin\/review\/([0-9a-f-]{36})$/;
+const SITE = 'https://squire.rpgm.tools';
 
 // The game runs from many origins (itch.io, installed web apps, self-hosted copies), and no request
 // carries a credential, so every origin is allowed.
@@ -62,39 +70,66 @@ async function receive(request: Request, env: Env, ctx: ExecutionContext): Promi
     `INSERT INTO batches (id, install_id, run_id, seq, level, received_at, mod_version, game_version, summary, blob_key, bytes)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (install_id, run_id, seq) DO NOTHING`,
   ).bind(id, b.install_id, b.run_id, b.seq, b.level, Date.now(), b.mod_version, b.game_version, JSON.stringify(b.summary), hasBlob ? blobKey(b) : null, text.length).run();
-  if (!inserted.meta.changes) return json(200, { ok: true, duplicate: true });
+  const ended = b.summary.outcome.ended && !!env.CHRONICLE_WEBHOOK;
+  if (!inserted.meta.changes) {
+    const earlier = ended ? await rowFor(env, b.install_id, b.run_id) : null;
+    return json(200, { ok: true, duplicate: true, ...(earlier ? { chronicle: chronicleOf(earlier) } : {}) });
+  }
   if (hasBlob) {
     const blob = { decisions: b.decisions, ...(b.level === 'full' ? { extra: b.extra, ...(b.backstory ? { backstory: b.backstory } : {}) } : {}) };
     await env.DB.prepare('INSERT INTO blobs (key, install_id, received_at, body) VALUES (?, ?, ?, ?)').bind(blobKey(b), b.install_id, Date.now(), JSON.stringify(blob)).run();
   }
-  if (b.summary.outcome.ended && env.CHRONICLE_WEBHOOK) ctx.waitUntil(post(env, b));
-  return json(202, { ok: true, id, level: b.level });
-}
-
-/** Posts a finished run once, and at most POSTS_PER_INSTALL_PER_DAY times a day per install. */
-async function post(env: Env, b: Batch): Promise<void> {
-  const since = Date.now() - 86400_000;
-  const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM posted WHERE install_id = ? AND posted_at > ?').bind(b.install_id, since).first<{ n: number }>();
-  if ((recent?.n ?? 0) >= POSTS_PER_INSTALL_PER_DAY) return;
-  const claimed = await env.DB.prepare('INSERT INTO posted (install_id, run_id, posted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').bind(b.install_id, b.run_id, Date.now()).run();
-  if (!claimed.meta.changes) return;
-  const verdict = await screen(b.summary, env.TYPESAFE_API_KEY);
-  if (verdict.skip) return;
-  await fetch(env.CHRONICLE_WEBHOOK!, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(runPost(b.summary, b.mod_version, verdict.hideName)) }).catch(() => undefined);
+  // A run is checked once, when its first batch with outcome.ended arrives. The reply says what
+  // happens to it; Discord is posted to after the reply.
+  let row: Row | null = ended ? await decide(env, b) : null;
+  if (ended && !row) row = await rowFor(env, b.install_id, b.run_id);
+  else if (row) ctx.waitUntil(publish(env, row));
+  return json(202, { ok: true, id, level: b.level, ...(row ? { chronicle: chronicleOf(row) } : {}) });
 }
 
 async function describe(env: Env, install: string): Promise<Response> {
   const r = await env.DB.prepare('SELECT COUNT(*) AS batches, COUNT(DISTINCT run_id) AS runs, MIN(received_at) AS oldest, MAX(received_at) AS newest FROM batches WHERE install_id = ?')
     .bind(install).first<{ batches: number; runs: number; oldest: number | null; newest: number | null }>();
   const iso = (t: number | null | undefined) => (t ? new Date(t).toISOString() : null);
-  return json(200, { ok: true, install_id: install, batches: r?.batches ?? 0, runs: r?.runs ?? 0, oldest: iso(r?.oldest), newest: iso(r?.newest) });
+  const runs = (await env.DB.prepare('SELECT * FROM screens WHERE install_id = ? ORDER BY created_at').bind(install).all<Row>()).results;
+  return json(200, { ok: true, install_id: install, batches: r?.batches ?? 0, runs: r?.runs ?? 0, oldest: iso(r?.oldest), newest: iso(r?.newest), chronicle: runs.map(chronicleOf) });
 }
 
 async function erase(env: Env, install: string): Promise<Response> {
   const blobs = (await env.DB.prepare('DELETE FROM blobs WHERE install_id = ?').bind(install).run()).meta.changes;
   const rows = await env.DB.prepare('DELETE FROM batches WHERE install_id = ?').bind(install).run();
-  await env.DB.prepare('DELETE FROM posted WHERE install_id = ?').bind(install).run();
+  await forgetPosts(env, install);
+  await env.DB.prepare('DELETE FROM screens WHERE install_id = ?').bind(install).run();
   return json(200, { ok: true, install_id: install, deleted_batches: rows.meta.changes, deleted_files: blobs });
+}
+
+const html = (body: string, status = 200) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY' } });
+
+/** The review page and the screen export. Both need a valid Cloudflare Access token for the /admin app. */
+async function admin(request: Request, env: Env, url: URL): Promise<Response> {
+  const who = await accessIdentity(request, env.ACCESS_TEAM, env.ACCESS_AUD);
+  if (!who) return new Response('Sign in through Cloudflare Access to use this page.', { status: 403 });
+  if (url.pathname === '/admin/api/screens' && request.method === 'GET') {
+    // Every check since a time, new or newly reviewed, for training a local copy of the screen.
+    const since = Number(url.searchParams.get('since') ?? 0) || 0;
+    const rows = (await env.DB.prepare('SELECT id, created_at, state, answers, checked, name_category, rest_category, status, review, decision, reviewed_at FROM screens WHERE created_at > ? OR reviewed_at > ? ORDER BY created_at LIMIT 500')
+      .bind(since, since).all<Record<string, unknown>>()).results;
+    return json(200, {
+      ok: true, questions: QUESTIONS, unfit_at: UNFIT_AT,
+      screens: rows.map((r) => ({ ...r, state: JSON.parse(String(r.state)), answers: r.answers ? JSON.parse(String(r.answers)) : null })),
+    });
+  }
+  const m = url.pathname.match(REVIEW);
+  if (!m) return new Response('Not found.', { status: 404 });
+  const row = await env.DB.prepare('SELECT * FROM screens WHERE id = ?').bind(m[1]!).first<Row>();
+  if (request.method === 'POST') {
+    // The form only ever posts from this host, so a post from anywhere else is refused.
+    if (request.headers.get('origin') !== SITE) return new Response('Refused: this form only works from squire.rpgm.tools.', { status: 403 });
+    const decision = String((await request.formData()).get('decision') ?? '') as Decision;
+    if (row) await applyDecision(env, row, decision, who);
+    return new Response(null, { status: 303, headers: { location: url.pathname } });
+  }
+  return html(reviewPage(row, who), row ? 200 : 404);
 }
 
 /** Deletes everything older than the retention period. */
@@ -102,7 +137,7 @@ async function sweep(env: Env): Promise<void> {
   const cutoff = Date.now() - Number(env.RETENTION_DAYS ?? 180) * 86400_000;
   await env.DB.prepare('DELETE FROM blobs WHERE received_at < ?').bind(cutoff).run();
   await env.DB.prepare('DELETE FROM batches WHERE received_at < ?').bind(cutoff).run();
-  await env.DB.prepare('DELETE FROM posted WHERE posted_at < ?').bind(cutoff).run();
+  await env.DB.prepare('DELETE FROM screens WHERE created_at < ?').bind(cutoff).run();
 }
 
 export default {
@@ -113,6 +148,7 @@ export default {
       return new Response(privacyPage(Number(env.RETENTION_DAYS ?? 180)), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
     }
     if (url.pathname === '/v1/batches') return request.method === 'POST' ? receive(request, env, ctx) : refuse(405, 'Use POST to send a batch.');
+    if (url.pathname.startsWith('/admin')) return admin(request, env, url);
     const m = url.pathname.match(INSTALL);
     if (m) {
       if (request.method === 'GET') return describe(env, m[1]!);
