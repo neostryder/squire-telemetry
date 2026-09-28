@@ -49,3 +49,23 @@ describe('Discord run post', () => {
     expect(JSON.stringify(body)).not.toContain('backstory');
   });
 });
+
+describe('chronicle screen', () => {
+  it('hides a flagged name and skips a post whose other text is flagged', async () => {
+    const { screen, UNFIT_AT } = await import('../src/screen');
+    const answer = (name: number, rest: number) => async () => new Response(JSON.stringify({ answers: { name_unfit: { noul: name }, rest_unfit: { noul: rest } } }));
+    const real = globalThis.fetch;
+    try {
+      globalThis.fetch = answer(0.9, 0.01) as typeof fetch;
+      expect(await screen(summary, 'k')).toEqual({ hideName: true, skip: false });
+      globalThis.fetch = answer(0.02, UNFIT_AT) as typeof fetch;
+      expect(await screen(summary, 'k')).toEqual({ hideName: false, skip: true });
+      globalThis.fetch = answer(0.02, 0.01) as typeof fetch;
+      expect(await screen(summary, 'k')).toEqual({ hideName: false, skip: false });
+      globalThis.fetch = (async () => new Response('down', { status: 503 })) as typeof fetch;
+      expect(await screen(summary, 'k')).toEqual({ hideName: true, skip: true });
+      expect(await screen(summary, undefined)).toEqual({ hideName: true, skip: true });
+    } finally { globalThis.fetch = real; }
+    expect((runPost(summary, '0.2.0', true) as { embeds: Array<{ title: string }> }).embeds[0]!.title).toBe('An unnamed adventurer, Human Warrior');
+  });
+});

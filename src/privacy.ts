@@ -38,7 +38,7 @@ export function privacyPage(days: number): string {
 <p>Each batch is stored with a random install id that the mod creates on your device, the run id, and the mod and game versions. Your IP address is used only to limit how often one address can send, and it is never stored. Everything is deleted ${days} days after it arrives. Cloudflare, which hosts this service, may keep short-lived request logs of its own.</p>
 
 <h2>How it is used</h2>
-<p>The records are used to improve the questions Squire asks its model and to train adapters for local models. When a run ends, the character's name, race and class, deepest level, cause of death, most-killed monsters and token count may be posted to the Neo Angband Discord server. The backstory is never posted.</p>
+<p>The records are used to improve the questions Squire asks its model and to train adapters for local models. When a run ends, the character's name, race and class, deepest level, cause of death, most-killed monsters and token count may be posted to the Neo Angband Discord server. Before that post goes out, the name, race, class, cause of death and monster names are sent to TypeSafe's Jev model to check for offensive text. A flagged name is shown as An unnamed adventurer, and a flagged post is not sent at all. The backstory is never posted or checked.</p>
 
 <h2>Seeing and deleting your data</h2>
 <p>To see what is stored for your install, or to remove all of it, use the delete option in Squire's settings. Without the mod, you can use your install id directly: a GET request to <code>https://squire.rpgm.tools/v1/installs/</code> followed by the id lists what is stored, and a DELETE request to the same address removes it at once.</p>

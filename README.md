@@ -41,6 +41,8 @@ summary holds persona (name, race, class), outcome (ended, won, depth_max from 0
 
 A batch can be at most 32 KB at the Summary level, 1 MB at Decisions and 1.5 MB at Full. One address can send 30 batches a minute and one install 10; past that the answer is 429 with Retry-After. When a batch reports outcome.ended as true, the run is posted to Discord once, with the persona's name, race and class, deepest level, turns, cause of death, top three kills and token count, and each install is limited to 10 posts a day.
 
+Before a chronicle post, the persona's name, race, class, cause of death and top kills go to TypeSafe's Jev model as two yes-or-no questions: is the name unfit to show, and is the rest unfit to show. At 0.35 or above, the name becomes An unnamed adventurer or the post is dropped. With no TYPESAFE_API_KEY secret, or no answer from Jev, the post is dropped.
+
 ## Development
 
 Tests run with pnpm test and the type check with pnpm typecheck. To deploy your own copy, create a D1 database, put its id in wrangler.toml, apply schema.sql with wrangler d1 execute, set the CHRONICLE_WEBHOOK secret if you want Discord posts, and run pnpm run deploy.

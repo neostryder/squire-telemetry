@@ -15,8 +15,8 @@ const feet = (depth: number) => (depth === 0 ? 'the town' : `${depth * 50} ft (l
 const count = (n: number) => n.toLocaleString('en-US');
 
 /** A Discord webhook body for one finished run. Only Summary-level fields are read, whatever the batch's level. */
-export function runPost(s: Summary, modVersion: string): Record<string, unknown> {
-  const who = `${plain(s.persona.name, 40)}, ${plain(s.persona.race, 24)} ${plain(s.persona.class, 24)}`;
+export function runPost(s: Summary, modVersion: string, hideName = false): Record<string, unknown> {
+  const who = `${hideName ? 'An unnamed adventurer' : plain(s.persona.name, 40)}, ${plain(s.persona.race, 24)} ${plain(s.persona.class, 24)}`;
   const fate = s.outcome.won ? 'Won the game' : s.outcome.cause_of_death ? `Killed by ${plain(s.outcome.cause_of_death, 80)}` : 'Retired';
   const kills = s.top_kills.slice(0, 3).map((k) => `${plain(k.name, 48)} x${count(k.count)}`).join(', ');
   const fields = [

@@ -1,6 +1,7 @@
 import { check, MAX_BYTES, type Batch } from './contract';
 import { runPost } from './discord';
 import { privacyPage } from './privacy';
+import { screen } from './screen';
 
 interface Env {
   DB: D1Database;
@@ -9,6 +10,8 @@ interface Env {
   INSTALL_LIMIT?: RateLimit;
   /** Discord webhook for finished-run posts. With no webhook set, nothing is posted. */
   CHRONICLE_WEBHOOK?: string;
+  /** TypeSafe key for the Jev screen each chronicle post passes first. */
+  TYPESAFE_API_KEY?: string;
   RETENTION_DAYS?: string;
 }
 
@@ -75,7 +78,9 @@ async function post(env: Env, b: Batch): Promise<void> {
   if ((recent?.n ?? 0) >= POSTS_PER_INSTALL_PER_DAY) return;
   const claimed = await env.DB.prepare('INSERT INTO posted (install_id, run_id, posted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').bind(b.install_id, b.run_id, Date.now()).run();
   if (!claimed.meta.changes) return;
-  await fetch(env.CHRONICLE_WEBHOOK!, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(runPost(b.summary, b.mod_version)) }).catch(() => undefined);
+  const verdict = await screen(b.summary, env.TYPESAFE_API_KEY);
+  if (verdict.skip) return;
+  await fetch(env.CHRONICLE_WEBHOOK!, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(runPost(b.summary, b.mod_version, verdict.hideName)) }).catch(() => undefined);
 }
 
 async function describe(env: Env, install: string): Promise<Response> {
