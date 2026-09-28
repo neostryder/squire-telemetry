@@ -39,7 +39,7 @@ summary holds persona (name, race, class), outcome (ended, won, depth_max from 0
 
 ## Limits and Discord posts
 
-A batch can be at most 32 KB at the Summary level, 1 MB at Decisions and 1.5 MB at Full. One address can send 30 batches a minute and one install 10; past that the answer is 429 with Retry-After. When a batch reports outcome.ended as true, the run is posted to Discord once, with the persona's name, race and class, deepest level, turns, cause of death, top three kills and token count, and each install is limited to 10 posts a day.
+A batch can be at most 32 KB at the Summary level, 1 MB at Decisions and 1.5 MB at Full. One address can send 30 batches a minute and one install 10; past that the answer is 429 with Retry-After. When a batch reports outcome.ended as true, the run is posted to Discord once, with the persona's name, race and class, deepest level, turns, cause of death, top three kills and token count, and each install is limited to 10 posts a day. If Discord refuses a post, the run waits and is sent again every 15 minutes for up to three days. A waiting run does not count toward the install's 10 posts a day until it goes through.
 
 Before a chronicle post, the persona's name, race, class, cause of death and top kills go to TypeSafe's Jev model. Two yes-or-no questions decide what happens: is the name unfit to show, and is the rest unfit to show. At 0.35 or above, the name becomes An unnamed adventurer or the run is held. Ten more questions, one per category for the name and one for the rest, only name the reason: a slur or hate, sexual content, harassment, contact details, or an advertisement. With no TYPESAFE_API_KEY secret, or no answer from Jev, the run is held too.
 
@@ -47,7 +47,7 @@ Before a chronicle post, the persona's name, race, class, cause of death and top
 
 When Jev flags a run, or cannot answer, the run goes to a private admin channel through a second webhook, ADMIN_WEBHOOK, with the reason and a Review button. The review page lives under /admin, behind Cloudflare Access, and lets an admin post the run, add the hidden name back, or keep it off Discord. The Worker checks the Access token itself as well, so a request that reaches it some other way is refused. GET /admin/api/screens returns each check's input, Jev's scores and the review, so a local model can be trained on them.
 
-The reply to a run's first batch with outcome.ended carries a chronicle object, and GET /v1/installs/<install_id> lists one for each run. It holds run_id, status (posted, posted_without_name, held or over_limit), flagged (name, details, unchecked or null), category (hate, sexual, harassment, contact, advert, general or null), review (pending, done or null), decision, and message, a sentence the mod can show the player as it is.
+The reply to a run's first batch with outcome.ended carries a chronicle object, and GET /v1/installs/<install_id> lists one for each run. It holds run_id, status (posted, posted_without_name, held, over_limit or waiting), flagged (name, details, unchecked or null), category (hate, sexual, harassment, contact, advert, general or null), review (pending, done or null), decision, and message, a sentence the mod can show the player as it is.
 
 ## Development
 

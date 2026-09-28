@@ -30,6 +30,6 @@ name = "INSTALL_LIMIT"
 namespace_id = "2002"
 simple = { limit = 10, period = 60 }
 
-# The retention sweep, once a day.
+# The retention sweep once a day, and every 15 minutes a retry of Discord posts that failed.
 [triggers]
-crons = ["17 9 * * *"]
+crons = ["17 9 * * *", "*/15 * * * *"]

@@ -1,6 +1,6 @@
 import { accessIdentity } from './access';
 import { reviewPage } from './admin';
-import { applyDecision, chronicleOf, decide, forgetPosts, publish, rowFor, type Decision, type Row } from './chronicle';
+import { applyDecision, chronicleOf, decide, forgetPosts, publish, retryWaiting, rowFor, type Decision, type Row } from './chronicle';
 import { check, MAX_BYTES, type Batch } from './contract';
 import { privacyPage } from './privacy';
 import { QUESTIONS, UNFIT_AT } from './screen';
@@ -26,6 +26,8 @@ const LARGEST = Math.max(...Object.values(MAX_BYTES));
 const INSTALL = /^\/v1\/installs\/([0-9a-f-]{36})$/;
 const REVIEW = /^\/admin\/review\/([0-9a-f-]{36})$/;
 const SITE = 'https://squire.rpgm.tools';
+/** Must match the second cron in wrangler.toml. */
+const RETRY_CRON = '*/15 * * * *';
 
 // The game runs from many origins (itch.io, installed web apps, self-hosted copies), and no request
 // carries a credential, so every origin is allowed.
@@ -73,6 +75,8 @@ async function receive(request: Request, env: Env, ctx: ExecutionContext): Promi
   const ended = b.summary.outcome.ended && !!env.CHRONICLE_WEBHOOK;
   if (!inserted.meta.changes) {
     const earlier = ended ? await rowFor(env, b.install_id, b.run_id) : null;
+    // A copy of the final batch is a good moment to send a post that failed the first time.
+    if (earlier && (earlier.status === 'waiting' || earlier.status === 'waiting_without_name')) ctx.waitUntil(publish(env, earlier));
     return json(200, { ok: true, duplicate: true, ...(earlier ? { chronicle: chronicleOf(earlier) } : {}) });
   }
   if (hasBlob) {
@@ -157,7 +161,8 @@ export default {
     }
     return refuse(404, 'Not found. Batches go to POST /v1/batches.');
   },
-  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
-    await sweep(env);
+  async scheduled(event: ScheduledController, env: Env): Promise<void> {
+    if (event.cron === RETRY_CRON) await retryWaiting(env);
+    else await sweep(env);
   },
 } satisfies ExportedHandler<Env>;

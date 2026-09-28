@@ -107,3 +107,56 @@ describe('admin review', () => {
     expect(await accessIdentity(new Request('https://x/', { headers: { 'cf-access-jwt-assertion': 'a.b.c' } }), 'rpgm.cloudflareaccess.com', 'aud')).toBeNull();
   });
 });
+
+describe('forum posts', () => {
+  const run = (name: string, hideName = false) => runPost({ ...summary, persona: { ...summary.persona, name } }, '0.2.0', hideName) as { thread_name: string };
+
+  it('always titles the forum thread, in 100 characters or fewer', async () => {
+    const { threadName } = await import('../src/discord');
+    expect(run('Beren').thread_name).toBe('Beren, Human Warrior, DL 12');
+    expect(run('Beren', true).thread_name).toBe('An unnamed adventurer, Human Warrior, DL 12');
+    for (const name of ['', '@@@', 'x'.repeat(500), '<@1> https://evil.example']) {
+      const title = run(name).thread_name;
+      expect(title.length).toBeGreaterThan(0);
+      expect(title.length).toBeLessThanOrEqual(100);
+    }
+    const long = { ...summary, persona: { name: 'n'.repeat(90), race: 'r'.repeat(90), class: 'c'.repeat(90) } };
+    expect(threadName(long).length).toBeLessThanOrEqual(100);
+  });
+
+  it('edits and deletes a forum post inside its thread', async () => {
+    const { hookUrl, storedMessage } = await import('../src/chronicle');
+    const url = 'https://discord.com/api/webhooks/1/tok';
+    expect(hookUrl(url, null)).toBe(`${url}?wait=true&with_components=true`);
+    expect(hookUrl(url, '77/77')).toBe(`${url}/messages/77?thread_id=77&with_components=true`);
+    expect(hookUrl(url, '88')).toBe(`${url}/messages/88?with_components=true`);
+    expect(hookUrl(`${url}?thread_id=5`, null)).toBe(`${url}?wait=true&with_components=true&thread_id=5`);
+    expect(storedMessage({ id: '77', channel_id: '77' })).toBe('77/77');
+    expect(storedMessage({ id: '88', channel_id: '12' })).toBe('88');
+    expect(storedMessage({})).toBeNull();
+  });
+
+  it('keeps a failed post waiting, out of the daily count, and sends it on retry', async () => {
+    const { publish, chronicleOf } = await import('../src/chronicle');
+    const updates: unknown[][] = [];
+    const DB = { prepare: () => ({ bind: (...args: unknown[]) => ({ run: async () => { updates.push(args); return { meta: { changes: 1 } }; } }) }) } as unknown as D1Database;
+    const env = { DB, CHRONICLE_WEBHOOK: 'https://discord.com/api/webhooks/1/tok' };
+    const row = { id: 'r1', install_id: 'i', run_id: 'run-0001', created_at: 0, mod_version: '0.2.0', summary: JSON.stringify(summary), state: '{}', answers: null, checked: 1, name_category: 'hate', rest_category: null, status: 'posted_without_name', review: null, decision: null, reviewer: null, reviewed_at: null, public_message: null, admin_message: null } as import('../src/chronicle').Row;
+    const real = globalThis.fetch;
+    const errors = console.error;
+    const sent: string[] = [];
+    try {
+      console.error = () => {};
+      globalThis.fetch = (async (_u: string, init: RequestInit) => { sent.push(String(init.body)); return new Response('{"code":220001}', { status: 400 }); }) as typeof fetch;
+      await publish(env, row);
+      expect(JSON.parse(sent[0]!).thread_name).toBe('An unnamed adventurer, Human Warrior, DL 12');
+      expect(updates[0]).toEqual(['waiting_without_name', null, null, 'r1']);
+      const waiting = chronicleOf({ ...row, status: 'waiting_without_name' });
+      expect(waiting.status).toBe('waiting');
+      expect(waiting.message).toContain('will be sent again');
+      globalThis.fetch = (async () => new Response(JSON.stringify({ id: '77', channel_id: '77' }))) as typeof fetch;
+      await publish(env, { ...row, status: 'waiting_without_name' });
+      expect(updates[1]).toEqual(['posted_without_name', '77/77', null, 'r1']);
+    } finally { globalThis.fetch = real; console.error = errors; }
+  });
+});
