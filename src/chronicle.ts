@@ -130,10 +130,13 @@ export function storedMessage(sent: { id?: string; channel_id?: string }): strin
   return sent.channel_id === sent.id ? `${sent.id}/${sent.id}` : sent.id;
 }
 
+/** Discord message flag 1 << 12: new posts and review notices never push a notification. Sent on POST only, since an edit cannot set it. */
+const SUPPRESS_NOTIFICATIONS = 1 << 12;
+
 async function hook(url: string | undefined, method: 'POST' | 'PATCH' | 'DELETE', message: string | null, body?: unknown): Promise<string | null> {
   if (!url) return null;
   try {
-    const r = await fetch(hookUrl(url, message), { method, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const r = await fetch(hookUrl(url, message), { method, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(method === 'POST' ? { ...(body as object), flags: SUPPRESS_NOTIFICATIONS } : body) } : {}) });
     if (!r.ok) {
       console.error(`Discord webhook ${method} failed with ${r.status}: ${(await r.text()).slice(0, 300)}`);
       return null;
