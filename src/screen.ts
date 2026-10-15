@@ -98,7 +98,7 @@ export async function screen(s: Summary, key: string | undefined): Promise<Scree
       const r = await fetch('https://api.typesafe.ai/v1/systemone', {
         method: 'POST', signal: AbortSignal.timeout(8000),
         headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: 'jev-latest', state: state[part], questions: QUESTIONS[part] }),
+        body: JSON.stringify({ model: 'jev-preview', state: state[part], questions: QUESTIONS[part] }),
       });
       if (!r.ok) throw new Error(`jev ${r.status}`);
       return ((await r.json()) as { answers?: Record<string, { noul?: number }> }).answers ?? {};
